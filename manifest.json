@@ -1,24 +1,16 @@
 {
   "manifest_version": 3,
   "name": "TON Address Labels",
-  "version": "1.0",
-  "description": "Displays labels for TON blockchain addresses on tonviewer.com",
+  "version": "2.0.0",
+  "description": "Displays verified-format labels for TON blockchain addresses on TON Viewer",
   "permissions": [
+    "alarms",
     "storage"
   ],
   "host_permissions": [
+    "https://cdn.jsdelivr.net/*",
     "https://tonviewer.com/*",
     "https://raw.githubusercontent.com/*"
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "custom_labels.json"
-      ],
-      "matches": [
-        "https://tonviewer.com/*"
-      ]
-    }
   ],
   "background": {
     "service_worker": "background.js"
@@ -29,8 +21,11 @@
         "https://tonviewer.com/*"
       ],
       "js": [
+        "address-utils.js",
+        "label-database.js",
         "content.js"
-      ]
+      ],
+      "run_at": "document_idle"
     }
   ]
 }

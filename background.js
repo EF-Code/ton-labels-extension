@@ -1,60 +1,133 @@
-// Fetch and store labels from GitHub and local files
-async function fetchAndStoreTonLabels() {
+importScripts('address-utils.js', 'label-database.js', 'refresh-utils.js');
+
+const LABEL_FEED_URLS = [
+    'https://cdn.jsdelivr.net/gh/ton-studio/ton-labels@build/assets.json',
+    'https://raw.githubusercontent.com/ton-studio/ton-labels/refs/heads/build/assets.json'
+];
+const REFRESH_ALARM_NAME = 'ton-labels-refresh';
+const REFRESH_PERIOD_MINUTES = 24 * 60;
+const REFRESH_PERIOD_MS = REFRESH_PERIOD_MINUTES * 60 * 1000;
+
+function fetchWithTimeout(url, timeoutMs = 90_000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    return fetch(url, {
+        cache: 'no-store',
+        signal: controller.signal
+    }).finally(() => clearTimeout(timeoutId));
+}
+
+async function loadCustomLabels() {
+    let response;
     try {
-        // Initialize empty labels object
-        let mergedLabels = {};
+        response = await fetch(chrome.runtime.getURL('custom_labels.json'), {
+            cache: 'no-store'
+        });
+    } catch (error) {
+        // The file is optional and is intentionally absent from a clean clone.
+        console.debug('No custom labels file found', error);
+        return {};
+    }
 
-        // Fetch labels from GitHub
-        const response = await fetch('https://raw.githubusercontent.com/ton-studio/ton-labels/refs/heads/build/assets.json');
-        const text = await response.text();
+    if (response.status === 404) {
+        return {};
+    }
+    if (!response.ok) {
+        throw new Error('Custom labels returned HTTP ' + response.status);
+    }
 
-        // Parse JSONL format (each line is a JSON object)
-        text.split('\n').forEach(line => {
-            if (line.trim()) {
-                try {
-                    const data = JSON.parse(line);
-                    // Store labels for both address formats (normal and non-bounceable)
-                    if (data.address_uf) {
-                        mergedLabels[data.address_uf] = data.label;
-                    }
-                    if (data.address_uf_nb) {
-                        mergedLabels[data.address_uf_nb] = data.label;
-                    }
-                    console.log(`Added label for ${data.label}: ${data.address_uf || ''} / ${data.address_uf_nb || ''}`);
-                } catch (err) {
-                    console.error('Error parsing line:', line, err);
-                }
+    const customLabels = await response.json();
+    if (!customLabels || typeof customLabels !== 'object' || Array.isArray(customLabels)) {
+        throw new Error('custom_labels.json must contain a JSON object');
+    }
+
+    return customLabels;
+}
+
+async function fetchLabelFeed() {
+    let lastError = null;
+
+    for (const url of LABEL_FEED_URLS) {
+        try {
+            const response = await fetchWithTimeout(url);
+            if (!response.ok) {
+                throw new Error('Label feed returned HTTP ' + response.status);
+            }
+            return await response.text();
+        } catch (error) {
+            lastError = error;
+            console.warn('TON label feed source failed: ' + url, error);
+        }
+    }
+
+    throw lastError || new Error('No label feed source was available');
+}
+
+async function fetchAndStoreTonLabels(reason = 'scheduled') {
+    try {
+        const text = await fetchLabelFeed();
+        // A malformed custom file should not silently discard the user's last
+        // known-good snapshot, so it fails the refresh as a whole.
+        const customLabels = await loadCustomLabels();
+        const prepared = TonLabelRefresh.buildSnapshot(text, customLabels);
+        const database = prepared.database;
+
+        const updatedAt = Date.now();
+        await chrome.storage.local.set({
+            tonLabels: database.labels,
+            tonLabelAliases: database.aliases,
+            tonLabelsMeta: {
+                acceptedCustomLabels: database.stats.acceptedCustomLabels,
+                acceptedPublicRecords: database.stats.acceptedPublicRecords,
+                feedErrors: prepared.feedErrors,
+                schemaVersion: 2,
+                updatedAt
             }
         });
 
-        // Try to load custom labels file
-        try {
-            const customResponse = await fetch(chrome.runtime.getURL('custom_labels.json'));
-            if (customResponse.ok) {
-                const customLabels = await customResponse.json();
-                // Merge labels, giving priority to custom labels
-                mergedLabels = { ...mergedLabels, ...customLabels };
-                console.log('Loaded custom labels file');
-            }
-        } catch (error) {
-            // This is expected if the file doesn't exist, so we'll just log it at debug level
-            console.debug('No custom labels file found (this is normal if you haven\'t created one)');
-        }
-
-        // Store in Chrome's storage
-        await chrome.storage.local.set({ tonLabels: mergedLabels });
-
-        // Log statistics about the labels database
-        const labelsCount = Object.keys(mergedLabels).length;
-        const databaseSize = new TextEncoder().encode(JSON.stringify(mergedLabels)).length;
-        console.log(`TON labels updated successfully: loaded ${labelsCount} labels (${(databaseSize / 1024).toFixed(2)} KB)`);
+        console.log(
+            'TON labels updated (' + reason + '): ' +
+            Object.keys(database.labels).length + ' addresses, ' +
+            Object.keys(database.aliases).length + ' display aliases from ' +
+            prepared.publicRecords + ' public records'
+        );
+        return true;
     } catch (error) {
-        console.error('Error fetching TON labels:', error);
+        console.warn('TON label refresh failed; retaining the previous snapshot', error);
+        return false;
     }
 }
 
-// Fetch labels when extension is installed or updated
-chrome.runtime.onInstalled.addListener(fetchAndStoreTonLabels);
+async function scheduleRefreshAlarm() {
+    await chrome.alarms.create(REFRESH_ALARM_NAME, {
+        periodInMinutes: REFRESH_PERIOD_MINUTES
+    });
+}
 
-// Update labels periodically (every 24 hours)
-setInterval(fetchAndStoreTonLabels, 24 * 60 * 60 * 1000);
+async function refreshIfStale() {
+    const stored = await chrome.storage.local.get('tonLabelsMeta');
+    const updatedAt = stored.tonLabelsMeta?.updatedAt;
+    if (!Number.isFinite(updatedAt) || Date.now() - updatedAt >= REFRESH_PERIOD_MS) {
+        await fetchAndStoreTonLabels('startup');
+    }
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+    void scheduleRefreshAlarm();
+    void fetchAndStoreTonLabels('install/update');
+});
+
+chrome.runtime.onStartup.addListener(() => {
+    void scheduleRefreshAlarm();
+    void refreshIfStale();
+});
+
+chrome.alarms.onAlarm.addListener(alarm => {
+    if (alarm.name === REFRESH_ALARM_NAME) {
+        void fetchAndStoreTonLabels('alarm');
+    }
+});
+
+// This also covers unpacked-extension reloads where onInstalled is not fired.
+void scheduleRefreshAlarm();
