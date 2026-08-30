@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<body>
+  <a id="breadcrumb" class="active" href="/UQAzAYi12p5JpfjM0aH-Gh2RG6BKvhhEc-GHrTPjql_1EeYe">
+    <div>UQAzAYi1…ql_1EeYe</div>
+  </a>
+  <h1 id="primary">UQAzAYi12p5JpfjM0aH-Gh2RG6BKvhhEc-GHrTPjql_1EeYe</h1>
+  <div id="suspicious-row" data-testid="transaction-row">
+    <span>SUSPICIOUS</span>
+  </div>
+
+  <script src="../../address-utils.js"></script>
+  <script src="../../label-database.js"></script>
+  <script>
+    const fixtureRaw = '0:330188B5DA9E49A5F8CCD1A1FE1A1D911BA04ABE184473E187AD33E3AA5FF511';
+    const fixtureDatabase = TonLabelDatabase.createDatabase(
+      Array.from({length: 10}, () => ({address: fixtureRaw, label: 'Fixture wallet'})),
+      {}
+    );
+    const fixtureChrome = {
+      storage: {
+        local: {
+          get: async () => ({
+            tonLabels: fixtureDatabase.labels,
+            tonLabelAliases: fixtureDatabase.aliases
+          })
+        },
+        onChanged: {addListener() {}}
+      }
+    };
+    try {
+      Object.defineProperty(window, 'chrome', {
+        configurable: true,
+        value: fixtureChrome
+      });
+    } catch {
+      window.chrome.storage = fixtureChrome.storage;
+    }
+  </script>
+  <script src="../../content.js"></script>
+  <script>
+    setTimeout(() => {
+      const dynamic = document.createElement('p');
+      dynamic.id = 'dynamic';
+      dynamic.textContent = 'EQAzAYi12p5JpfjM0aH-Gh2RG6BKvhhEc-GHrTPjql_1Ebvb';
+      document.body.appendChild(dynamic);
+    }, 100);
+  </script>
+</body>
+</html>

@@ -1,60 +1,64 @@
-# TON Address Labels Chrome Extension
+# TON Address Labels
 
-This Chrome extension enhances the browsing experience on tonviewer.com by adding labels for TON blockchain addresses from [ton-studio/ton-labels](https://github.com/ton-studio/ton-labels) and a custom local file. It also removes `scam` and `suspicious` transactions from the list.
+This Manifest V3 browser extension adds labels for TON addresses displayed on TON Viewer. It reads the public label feed from ton-studio/ton-labels, supports local overrides, and can hide transaction rows explicitly marked as scam or suspicious by the explorer.
 
-![TON Address Labels Extension](images/image.png)
+Labels are informational hints, not proof of ownership or safety. The extension never changes blockchain data.
 
 ## Features
 
-- Automatically replaces TON addresses with human-readable labels on tonviewer.com
-- Periodically updates the labels database (every 24 hours)
-- Works with dynamically loaded content
-- Uses local storage for fast label lookups
-- Supports custom labels through a local configuration file
+- Canonicalizes valid TON friendly and raw addresses before matching.
+- Handles bounceable, non-bounceable, and masterchain friendly forms.
+- Labels full addresses in headings, links, and other text nodes.
+- Resolves shortened addresses only when the match is unique.
+- Keeps the existing explorer elements, links, icons, classes, and event handlers intact.
+- Refreshes the public database immediately after installation and approximately every 24 hours.
+- Retains the last known-good database when a refresh fails.
+- Processes dynamically loaded page content incrementally.
+- Stores the label snapshot locally; no API key or account access is required.
 
 ## Installation
 
-1. Clone this repository or download the source code
-2. Open Chrome-based browser and navigate to `chrome://extensions/`
-3. Enable "Developer mode" in the top right corner
-4. Click "Load unpacked" and select the extension directory
+1. Clone or download this repository.
+2. Optionally create custom_labels.json beside the extension files.
+3. Open chrome://extensions/ in a Chromium-based browser.
+4. Enable Developer mode.
+5. Select Load unpacked and choose this directory.
 
-## Custom Labels
+The extension currently runs on https://tonviewer.com/ pages. After editing source files or custom labels, use Reload on the extension card and refresh the TON Viewer tab.
 
-To add your own custom labels:
+## Custom labels
 
-1. Copy the example file: `cp custom_labels.example.json custom_labels.json`
-2. Edit `custom_labels.json` and add your labels in the format:
-```json
-{
-    "UQDSE2BHJi4Qowu4jgvqQ3_4-KFrR2x6DqPzFkMGczCgoLcK": "Label Name"
-}
-```
-3. Reload the extension to apply your changes
+Copy custom_labels.example.json to custom_labels.json and edit the JSON object. A friendly address or a raw address can be used as a key. One key is enough to label both bounceable and non-bounceable representations of the same account.
 
-Your custom labels will take precedence over the public labels database.
+Example:
+
+    {
+      "UQDSE2BHJi4Qowu4jgvqQ3_4-KFrR2x6DqPzFkMGczCgoLcK": "My wallet"
+    }
+
+Custom labels override public labels. The custom file is intentionally ignored by Git and is not exposed as a web-accessible extension resource.
+
+## Data and permissions
+
+The extension needs storage for its local snapshot, alarms for reliable MV3 refresh scheduling, TON Viewer access for the content script, and access to the upstream feed through a compressed CDN mirror with raw GitHub fallback. The feed is treated as untrusted data: addresses are validated and labels are inserted as text rather than HTML.
 
 ## Development
 
-The extension consists of three main components:
+The main files are:
 
-- `manifest.json`: Extension configuration and permissions
-- `background.js`: Handles fetching and storing the labels database
-- `content.js`: Manages DOM manipulation and label replacement
+- manifest.json: extension permissions and content-script wiring
+- background.js: alarm-driven feed refresh and cache management
+- address-utils.js: TON friendly-address checksum and canonicalization
+- label-database.js: feed parsing, validation, alias generation, and migration
+- refresh-utils.js: bounded feed validation and last-good-snapshot preparation
+- content.js: incremental address rendering and guarded transaction filtering
 
-## How it Works
+Run the complete local verification:
 
-1. When installed or updated, the extension fetches the latest labels from the TON Labels repository
-2. Labels are stored in Chrome's local storage for quick access
-3. When browsing tonviewer.com, the extension automatically replaces address text with corresponding labels
-4. A MutationObserver ensures labels are applied to dynamically loaded content
+    npm run verify
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request. Join TON Data hub comminuty: https://t.me/tondatahub.
+This runs the Node test suite, JavaScript and manifest checks, and creates a verified package at artifacts/ton-address-labels-2.0.0.zip.
 
 ## License
 
 MIT
-
-----

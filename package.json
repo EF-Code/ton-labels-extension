@@ -1,0 +1,13 @@
+{
+  "name": "ton-address-labels",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Manifest V3 TON address labels for TON Viewer",
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check background.js && node --check address-utils.js && node --check label-database.js && node --check refresh-utils.js && node --check content.js && jq empty manifest.json custom_labels.example.json",
+    "package": "node scripts/package.mjs",
+    "test:browser": "node scripts/browser-fixture.mjs",
+    "verify": "npm test && npm run check && npm run test:browser && npm run package"
+  }
+}
